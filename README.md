@@ -94,11 +94,9 @@ To run this analysis, you will need R and RStudio (recommended).
 1.  **Clone the Repository:**
 
     ```bash
-    git clone [https://github.com/your-username/Fish-Meal-Forecasting-through-ARIMA-Modelling.git](https://github.com/your-username/Fish-Meal-Forecasting-through-ARIMA-Modelling.git)
+    git clone [https://github.com/krane07/Fish-Meal-Forecasting-through-ARIMA-Modelling.git](https://github.com/your-username/Fish-Meal-Forecasting-through-ARIMA-Modelling.git)
     cd Fish-Meal-Forecasting-through-ARIMA-Modelling
     ```
-
-    (Replace `your-username` with the actual GitHub username where the project will be hosted.)
 
 2.  **Download the Data:**
 
