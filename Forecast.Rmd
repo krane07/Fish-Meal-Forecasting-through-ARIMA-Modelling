@@ -1,0 +1,279 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+This notebook presents the code necessary for selecting and estimating potential ARIMA models, followed by a comprehensive evaluation of their performance.
+
+```{r}
+#Loading relevant packages
+library(readxl)
+library(zoo)
+library(xts)
+library(lmtest)
+library(summarytools)
+library(tseries)
+library(forecast)
+library(stats)
+library(ggplot2)
+library(MLmetrics)
+
+##The data set is taken from IMF (https://www.imf.org/en/Research/commodity-prices)
+##The data set contains 94 different commodities in Peru. From this we would taking Fish meal.
+#Importing data set
+data_set <- read_excel("path/to/your/external_data_mar.xls")
+# Selecting relevant Columns and removing the headers
+fish<- data_set[,c("Commodity","PFSHMEAL")] 
+fish <- fish[-(1:3),] #The headers are removed
+size <- nrow(fish)
+fm_price <- log(as.numeric(fish$PFSHMEAL))
+dat <- seq(as.Date("1990/1/1"), by = "month", length.out = size)
+
+fm_dt <- xts(fm_price,dat)
+plot(fm_dt)
+
+
+# Calculating descriptive statistics
+desc_stat <- descr(fm_dt)
+
+# Creating visualizations
+freq(fm_dt)
+hist(fm_dt)
+
+# Printing descriptive statistics table
+print(desc_stat)
+
+#Conducting ADF test for checking for the Unit roots
+adf.test(fm_dt)
+
+#Since the data is not stationary, differencing the dataset
+dfm_dt <- diff(fm_dt)
+dfm_dt <- na.omit(dfm_dt) #drop the now-missing first value of the differenced series
+
+#Conducting ADF test of the differenced series
+adf.test(dfm_dt)
+plot(dfm_dt)
+
+par(mar = c(5, 4, 4, 2) + 0.1) #Setting the margins of plot for the bottom, left, top, and right sides of the plot, respectively.
+#Auto Correlation Function to get the components of MA 
+acf(dfm_dt, main="ACF Plot")
+par(mar = c(5, 4, 4, 2) + 0.1)
+#Partial Auto Correlation Function to get the components of AR
+pacf(dfm_dt, main="PACF Plot")
+
+#ARIMA Modelling
+ar1 <- arima(dfm_dt, order = c(1,0,0))
+ar2 <- arima(dfm_dt, order = c(2,0,0))
+ma1 <- arima(dfm_dt, order = c(0,0,1))
+arma11 <- arima(dfm_dt, order = c(1,0,1))
+arma21 <- arima(dfm_dt, order = c(2,0,1))
+
+#Conducting Ljung-Box Test for checking autocorrelation of residuals in time series
+Box.test(ar1$residuals, type = "Ljung-Box")
+Box.test(ar2$residuals, type = "Ljung-Box")
+Box.test(ma1$residuals, type = "Ljung-Box")
+Box.test(arma11$residuals, type = "Ljung-Box")
+Box.test(arma21$residuals, type = "Ljung-Box")
+
+#Conducting Shapiro-Wilk Test for checking the normality of residuals in time series
+shapiro.test(ar1$residuals)
+shapiro.test(ar2$residuals)
+shapiro.test(ma1$residuals)
+shapiro.test(arma11$residuals)
+shapiro.test(arma21$residuals)
+
+#Ploting residuals of models for visual inspection
+plot(ar1$residuals)
+plot(ar2$residuals)
+plot(ma1$residuals)
+plot(arma11$residuals)
+plot(arma21$residuals)
+
+#Calculating standard errors of the Models
+se_ar1 <- ar1$sigma2^0.5
+se_ar2 <- ar2$sigma2^0.5
+se_ma1 <- ma1$sigma2^0.5
+se_arma11 <- arma11$sigma2^0.5
+se_arma21 <- arma21$sigma2^0.5
+se_ar1
+se_ar2
+se_ma1
+se_arma11
+se_arma21
+
+#Calculating AIC
+ar1_aic <- AIC(ar1)
+ar2_aic <- AIC(ar2)
+ma1_aic <- AIC(ma1)
+arma11_aic <- AIC(arma11)
+arma21_aic <- AIC(arma21)
+ar1_aic
+ar2_aic
+ma1_aic
+arma11_aic
+arma21_aic
+
+#Calculating BIC
+ar1_bic <- BIC(ar1)
+ar2_bic <- BIC(ar2)
+ma1_bic <- BIC(ma1)
+arma11_bic <- BIC(arma11)
+arma21_bic <- BIC(arma21)
+ar1_bic
+ar2_bic
+ma1_bic
+arma11_bic
+arma21_bic
+
+###For training 90:10 ratio is taken where 90% data is used for training and 10% for testing
+## train data
+#Total 410 observations. Therefore, subtracting 41(10%) from original data set to get training data
+train <- head(dfm_dt, -41) 
+## test data
+#Taking latest 41 observations which will be used to evaluate the forecasted price
+test <- tail(dfm_dt, 41)
+
+ma1t <- arima(train, order = c(0,0,1))
+arma11t <- arima(train, order = c(1,0,1))
+
+
+#Checking for residual autocorrelation and residual normality
+Box.test(ma1t$residuals, type = "Ljung-Box")
+Box.test(arma11t$residuals, type = "Ljung-Box")
+
+shapiro.test(ma1t$residuals)
+shapiro.test(arma11t$residuals)
+
+#Calculating AIC of the Training data
+AIC(ma1t)
+AIC(arma11t)
+#Calculating BIC of the Training data
+BIC(ma1t)
+BIC(arma11t)
+
+#Dynamic Forecasting(Type A)
+arma11f <- forecast(arma11t, h = 41)
+ma1f <- forecast(ma1t, h = 41)
+arma11f
+ma1f
+plot(arma11f$mean, main="Forecasted Mean of ARMA(1,1)")
+plot(ma1f$mean, main="Forecasted Mean of MA(1)")
+plot(arma11f, main="Forecast from ARMA(1,1) with non-zero mean")
+plot(ma1f, main="Forecast from MA(1) with non-zero mean")
+
+arma11ac <- accuracy(arma11f, test)
+ma1ac <- accuracy(ma1f, test)
+arma11ac
+ma1ac
+# Calculate the mean of the test data
+test_mean <- mean(coredata(test))
+# Calculate the mean of the forecasted values
+forecast_mean <- mean(arma11f$mean)
+# Compare the means
+if(forecast_mean > test_mean){
+cat("The forecasted mean is higher than the test mean")
+} else if(forecast_mean < test_mean){
+cat("The forecasted mean is lower than the test mean")
+} else {
+cat("The forecasted mean is equal to the test mean")
+}
+## The forecasted mean is lower than the test mean
+plot(test)
+
+#Static Forecasting (Type B)
+arma11ee <- Arima(train, order = c(1,0,1))
+ma1ee <- Arima(train, order = c(0,0,1))
+
+arma11ff <- Arima(test, model = arma11ee)
+ma1ff <- Arima(test, model = ma1ee)
+
+#The fitted() function then extracts the fitted values from the new model, which are equal to the one-step
+#ahead forecasts for each period, being based on the estimated coefficients from arma11ee and ma1ee
+#but the data values from test sample.
+
+arma11static <- fitted(arma11ff)
+ma1static <- fitted(ma1ff)
+plot(arma11static, main="Static Forecast of ARMA(1,1)")
+plot(ma1static, main="Static Forecast of MA(1)")
+
+#Calculate forecast accuracy measures
+arma11accuracy <- accuracy(arma11static, test)
+ma1accuracy <- accuracy(ma1static, test)
+arma11accuracy
+ma1accuracy
+
+#STL Model Forecast
+fish_meal_ts <- ts(data = fish$PFSHMEAL,
+start = 1990,
+end = 2024,
+frequency = 12)
+fish_meal_ts %>%
+autoplot()
+
+#Decomposing Time Series
+qwert <- as.numeric(fish$PFSHMEAL) #To avoid error converting data to numeric
+
+fish_meal_ts <- ts(data = qwert,
+start = 1990,
+end = 2024,
+frequency = 12)
+fish_meal_ts %>%
+autoplot()
+
+fish_meal_decom <- fish_meal_ts %>%
+decompose(type = "multiplicative")
+fish_meal_decom %>%
+autoplot()
+
+#Model Estimation
+train2 <- head(fish_meal_ts, -41)
+test2 <- tail(fish_meal_ts, 40)
+
+#Model Creation
+fish_stl <- stlm(y = train2, method = "arima")
+fish_stl$model
+
+#Conducting ADF test for checking for the Unit roots
+adf.test(fish_meal_ts)
+#differencing by order of 1 to make the data stationary
+dfish_meal_ts <- diff(fish_meal_ts)
+#Conducting ADF test of differenced series
+adf.test(dfish_meal_ts)
+plot(dfish_meal_ts)
+
+#Auto Correlation Function to get the components of MA 
+acf(dfish_meal_ts)
+#Partial Auto Correlation Function to get the components of AR 
+pacf(dfish_meal_ts)
+##The ACF and PACF tests also confirm the model suggestion of MA(1) and AR(0).
+
+#Forecasting the model
+fish_meal_f <- forecast(fish_stl, h = 41)
+fish_meal_f
+
+#Visualizing the STL forecast
+fish_meal_ts %>%
+autoplot() +
+autolayer(fish_stl$fitted, lwd = 0.5,
+series = "ARIMA model") +
+autolayer(fish_meal_f$mean, lwd = 0.5,
+series = "Forecast 41 months") +
+ggtitle("STL ARIMA(0,1,0) Forecast")
+plot(fish_meal_f)
+
+##Forecast Evaluation STL Model
+# MSE and RMSE
+fish_mse <- mean((as.numeric(test2) - fish_meal_f$mean)^2)
+fish_rmse <- fish_mse^0.5
+fish_mse
+fish_rmse
+# # MAE
+mae <- mean(abs(test2 - fish_meal_f$mean))
+mae
+# MAPE (Mean Absolute Percentage Error)
+MAPE(fish_stl$fitted, train2)*100
+MAPE(fish_meal_f$mean, test2)*100
+```
+
+
+
+
